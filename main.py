@@ -5,10 +5,10 @@ import sys
 import signal
 
 from signals import Signals
-from modules.discord.discordBot import DiscordBot
-from modules.discord.discordClient import DiscordClient
+from modules.discordClient import DiscordClient
 from llmWrappers.textLLMWrapper import TextLLMWrapper
 from prompter import Prompter
+from modules.memory import Memory
 
 async def main():
 
@@ -28,37 +28,42 @@ async def main():
     # MODULES
     # Modules that start disabled CANNOT be enabled while the program is running.
     modules = {}
-
-    # Create Discord bot
-    discordBot = DiscordBot(signals)
-    modules['discord'] = DiscordClient(discordBot, signals, enabled=True)
+    module_threads = {}
 
     # Create LLMWrappers
-    llm = TextLLMWrapper(discordBot, signals)
+    llm = TextLLMWrapper(signals, modules)
 
     # Create Prompter
     prompter = Prompter(signals, llm, modules)
 
-    # Create tasks
-    prompt_task = asyncio.create_task(prompter.start())
-    discord_bot_tasks = asyncio.create_task(modules['discord'].start_bot())
-    discord_sender_tasks = asyncio.create_task(modules['discord'].start_sender())
-    
-    while not signals.terminate:
-        await asyncio.sleep(1)
+    # Create Discord bot
+    modules['discord'] = DiscordClient(signals, enabled=True)
+    # Create Memory module
+    # modules['memory'] = Memory(signals, enabled=True)
 
+    # Create threads (As daemons, so they exit when the main thread exits)
+    prompter_thread = threading.Thread(target=prompter.prompt_loop, daemon=True)
+    # Start Threads
+    prompter_thread.start()
+
+    # Create and start threads for modules
+    for name, module in modules.items():
+        module_thread = threading.Thread(target=module.init_event_loop, daemon=True)
+        module_threads[name] = module_thread
+        module_thread.start()
+
+    while not signals.terminate:
+        time.sleep(0.1)
     print("TERMINATING ======================")
 
-    # Wait for all tasks to finish
-    await modules['discord'].close_bot() 
-    await modules['discord'].close_sender()
+    # Wait for child threads to exit before exiting main thread
 
-    await discord_bot_tasks
-    await discord_sender_tasks
+    # Wait for all modules to finish
+    for module_thread in module_threads.values():
+        module_thread.join()
     print("MODULES EXITED ======================")
 
-    await prompter.close()
-    await prompt_task
+    prompter_thread.join()
     print("PROMPTER EXITED ======================")
 
     print("All threads exited, shutdown complete")

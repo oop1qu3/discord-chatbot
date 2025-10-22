@@ -13,16 +13,13 @@ class Prompter:
         self.system_ready = False
         self.timeSinceLastMessage = 0.0
     
-    async def start(self):
+    def prompt_loop(self):
         print("Prompter started")
 
         while not self.signals.terminate:
-            await self.llm.prompt()
-            await asyncio.sleep(0.1)
-
-    async def close(self):
-        print("Prompter closed")
-        await self.signals.message_queue_in.put(None) 
+            if self.signals.on_message:
+                self.llm.prompt()
+                self.signals.on_message = False
 
 '''
 import discord

@@ -2,15 +2,37 @@ import asyncio
 
 class Signals:
     def __init__(self):
-        self.chat_sessions = {}
-        self.is_processing = False
         self.last_message_time = 0.0
 
         # This flag indicates to all threads that they should immediately terminate
         self._terminate = False
 
-        self.message_queue_in = asyncio.Queue()
-        self.message_queue_out = asyncio.Queue()
+        self._recentDiscordMessages = []
+        self._history = []
+
+        # This flag indicates to discord bot that it received message, exectuting prompt
+        self.on_message = False
+
+        self.recentChannel = None
+
+        self.chat_sessions = {}
+        self.is_processing = False
+
+    @property
+    def recentDiscordMessages(self):
+        return self._recentDiscordMessages
+
+    @recentDiscordMessages.setter
+    def recentDiscordMessages(self, value):
+        self._recentDiscordMessages = value
+
+    @property
+    def history(self):
+        return self._history
+
+    @history.setter
+    def history(self, value):
+        self._history = value
 
     @property
     def terminate(self):

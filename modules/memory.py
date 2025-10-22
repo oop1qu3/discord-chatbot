@@ -1,6 +1,7 @@
 from modules.module import Module
 from constants import *
 from chromadb.config import Settings
+from google.genai import types
 import chromadb
 import requests
 import json
@@ -8,7 +9,7 @@ import uuid
 import asyncio
 import copy
 
-'''
+
 class Memory(Module):
 
     def __init__(self, signals, enabled=True):
@@ -31,7 +32,7 @@ class Memory(Module):
         # Use recent messages and twitch messages to query the database for related memories
         query = ""
 
-        for message in self.signals.recentTwitchMessages:
+        for message in self.signals.recentDiscordMessages:
             query += message + "\n"
 
         for message in self.signals.history[-MEMORY_QUERY_MESSAGE_COUNT:]:
@@ -75,29 +76,98 @@ class Memory(Module):
                 for message in messages:
                     chat_section += message["content"]
 
-                data = {
-                    "mode": "instruct",
-                    "max_tokens": 200,
-                    "skip_special_tokens": False,  # Necessary for Llama 3
-                    "custom_token_bans": BANNED_TOKENS,
-                    "stop": STOP_STRINGS.remove("\n"),
-                    "messages": [{
-                        "role": "user",
-                        "content": chat_section + MEMORY_PROMPT
-                    }]
-                }
-                headers = {"Content-Type": "application/json"}
+                # 실제 대화 내용을 단일 'user' 메시지로 구성
+                conversation_history = [{
+                    "role": "user",
+                    # chat_section (최근 대화)를 요청 내용으로 전달
+                    "parts": [{"text": chat_section}] 
+                }]
 
-                response = requests.post(LLM_ENDPOINT + "/v1/chat/completions", headers=headers, json=data, verify=False)
-                raw_memories = response.json()['choices'][0]['message']['content']
+                # 3개의 질문-답변 쌍을 담을 JSON 스키마 정의
+                memory_schema = types.Schema(
+                    type=types.Type.OBJECT,
+                    properties={
+                        "memories": types.Schema(
+                            type=types.Type.ARRAY,
+                            items=types.Schema(
+                                type=types.Type.OBJECT,
+                                properties={
+                                    "question": types.Schema(type=types.Type.STRING),
+                                    "answer": types.Schema(type=types.Type.STRING),
+                                },
+                                required=["question", "answer"],
+                            ),
+                        )
+                    },
+                    required=["memories"]
+                )
 
-                # Split each Q&A section and add the new memory to the database
-                for memory in raw_memories.split("{qa}"):
-                    memory = memory.strip()
-                    if memory != "":
-                        self.collection.upsert([str(uuid.uuid4())], documents=[memory], metadatas=[{"type": "short-term"}])
+                try:
+                    # 2. 비동기 호출: requests.post 대신 AsyncClient 사용
+                    response = await self.global_model.models.generate_content(
+                        model='gemini-2.0-flash',  # 적절한 Gemini 모델 선택
+                        contents=conversation_history,
+                        config={
+                            "system_instruction": MEMORY_PROMPT, # MEMORY_PROMPT는 이제 모델 역할 정의에 집중
+                            "max_output_tokens": 500, # JSON 출력에 맞춰 토큰 증가
+                            "response_mime_type": "application/json", # 🚨 JSON 출력 강제
+                            "response_schema": memory_schema        # 🚨 스키마 정의
+                        }
+                    )
+                    
+                    # 3. 응답에서 내용 추출
+                    raw_memories = response.text
+                    print(f"MEMORY: Raw memories generated: {raw_memories[:50]}...")
+                    
+                    try:
+                        # 1. JSON 문자열 파싱
+                        # response.text는 JSON 모드 설정 덕분에 유효한 JSON 문자열일 것입니다.
+                        raw_memories_json_str = response.text
+                        
+                        # JSON 문자열을 파이썬 딕셔너리로 변환
+                        memory_data = json.loads(raw_memories_json_str)
 
-                self.processed_count = len(self.signals.history)
+                        # 2. 메모리 추출 및 데이터베이스에 upsert
+                        new_memories_to_upsert = []
+                        
+                        # JSON 스키마의 'memories' 배열을 반복하며 Q&A 쌍을 추출
+                        for item in memory_data.get('memories', []):
+                            question = item.get('question', '').strip()
+                            answer = item.get('answer', '').strip()
+                            
+                            # Q&A 쌍을 하나의 문자열로 결합 (컬렉션에 저장될 Document)
+                            if question and answer:
+                                # 질문과 답변을 명확하게 구분하는 포맷을 사용하여 저장
+                                full_memory = f"Q: {question}\nA: {answer}" 
+                                new_memories_to_upsert.append(full_memory)
+
+                        # 3. 데이터베이스에 일괄 저장 (Upsert)
+                        if new_memories_to_upsert:
+                            ids = [str(uuid.uuid4()) for _ in new_memories_to_upsert]
+                            
+                            # upsert는 비동기 작업일 수 있으므로 self.collection이 비동기를 지원하는지 확인해야 함
+                            # ChromaDB Python 클라이언트의 upsert는 일반적으로 동기 함수이므로, 그대로 사용.
+                            self.collection.upsert(
+                                ids=ids,
+                                documents=new_memories_to_upsert,
+                                metadatas=[{"type": "short-term"}] * len(ids)
+                            )
+                            print(f"MEMORY: {len(new_memories_to_upsert)}개의 새로운 메모리가 데이터베이스에 추가되었습니다.")
+
+                        # 4. 처리된 메시지 카운트 업데이트
+                        self.processed_count = len(self.signals.history) 
+
+                    except json.JSONDecodeError as e:
+                        print(f"MEMORY: JSON 파싱 오류 발생. 원본 텍스트: {raw_memories_json_str[:100]}...")
+                    except Exception as e:
+                        print(f"MEMORY: 메모리 저장 중 일반 오류 발생: {e}")
+                    
+                    # 처리된 메시지 카운트 업데이트
+                    self.processed_count = len(self.signals.history) 
+
+                except Exception as e:
+                    print(f"MEMORY: Gemini API 호출 중 오류 발생: {e}")
+                    await asyncio.sleep(5) # 오류 발생 시 잠시 대기
 
             await asyncio.sleep(5)
 
@@ -145,7 +215,7 @@ class Memory(Module):
                 json.dump(data, file)
 
         def get_memories(self, query=""):
-            data = [];
+            data = []
 
             if query == "":
                 memories = self.outer.collection.get()
@@ -164,4 +234,3 @@ class Memory(Module):
                 # Sort memories by distance
                 data = sorted(data, key=lambda x: x["distance"])
             return data
-'''

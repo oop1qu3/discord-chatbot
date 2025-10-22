@@ -1,77 +1,152 @@
 import os
+import copy
 from dotenv import load_dotenv
-from google import generativeai as genai
+from google.genai import Client
+from modules.injection import Injection
+from constants import *
 
 class TextLLMWrapper:
-    def __init__(self, discordBot, signals) -> None:
-        self.discordBot = discordBot
+    def __init__(self, signals, modules=None) -> None:
         self.signals = signals
+        self.modules = modules
 
-        # set up env
-        load_dotenv()
-        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        self.client = self._initialize_gemini_client()
+    
+    def _initialize_gemini_client(self):
+        try:
+            load_dotenv()
+            client = Client(api_key=os.getenv("GEMINI_API_KEY"))
+            print("Gemini Client 초기화 성공.")
+            return client
+        except Exception as e:
+            print(f"Gemini Client 초기화 오류: {e}")
+            return None
+    
+    # Assembles all the injections from all modules into a single prompt by increasing priority
+    def assemble_injections(self, injections=None):
+        if injections is None:
+            injections = []
 
-        # Init Gemini model 
-        SYSTEM_PROMPT = (
-            "너는 디스코드 서버의 멤버 중 한 명처럼 행동해야 해. 즉, AI인 걸 들키면 안돼. "
-            "항상 자연스럽고 재치 있게 대화하고, 누가 말을 걸지 않아도 대화에 참여할 수 있어. "
-            "단, 공격적이거나 불쾌한 발언은 사회적으로 용인되는 한에서 가능해. "
-            "말투는 무례하고, 짧은 문장을 사용해. "
-            "그런데 겉으로는 무서워도 가끔씩 친절한 모습을 보이는 반전 매력도 있어. 츤데레처럼."
-            "이전 대화 내용을 기억하고, 맥락에 맞는 반응을 보여줘."
-        )
+        # Gather all injections from all modules
+        for module in self.modules.values():
+            injections.append(module.get_prompt_injection())
 
-        self.global_model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash",
-            system_instruction=SYSTEM_PROMPT
-        )
-    '''
+        # Let all modules clean up once the prompt injection has been fetched from all modules
+        # for module in self.modules.values():
+        #    module.cleanup()
+
+        # Sort injections by priority
+        injections = sorted(injections, key=lambda x: x.priority)
+
+        # Assemble injections
+        prompt = ""
+        for injection in injections:
+            prompt += injection.text
+        return prompt
+    
+    def generate_prompt(self):
+        messages = copy.deepcopy(self.signals.history)
+
+        # For every message prefix with speaker name unless it is blank
+        for message in messages:
+            if message["role"] == "user" and message["content"] != "":
+                message["content"] = HOST_NAME + ": " + message["content"] + "\n"
+            elif message["role"] == "assistant" and message["content"] != "":
+                message["content"] = AI_NAME + ": " + message["content"] + "\n"
+
+        while True:
+            chat_section = ""
+            '''for message in messages:
+                chat_section += message["content"]'''
+
+            generation_prompt = AI_NAME + ": "
+
+            base_injections = [Injection(chat_section, 100)]
+            full_prompt = self.assemble_injections(base_injections) + generation_prompt
+            print("full_prompt:")
+            print(full_prompt)
+            print("======================")
+
+            return full_prompt  # FIXME
+            '''wrapper = [{"role": "user", "content": full_prompt}]
+
+            # Find out roughly how many tokens the prompt is
+            # Not 100% accurate, but it should be a good enough estimate
+            prompt_tokens = len(self.tokenizer.apply_chat_template(wrapper, tokenize=True, return_tensors="pt")[0])
+            # print(prompt_tokens)
+
+            # Maximum 90% context size usage before prompting LLM
+            if prompt_tokens < 0.9 * self.CONTEXT_SIZE:
+                self.signals.sio_queue.put(("full_prompt", full_prompt))
+                # print(full_prompt)
+                return full_prompt
+            else:
+                # If the prompt is too long even with no messages, there's nothing we can do, crash
+                if len(messages) < 1:
+                    raise RuntimeError("Prompt too long even with no messages")
+
+                # Remove the oldest message from the prompt and try again
+                messages.pop(0)
+                print("Prompt too long, removing earliest message")'''
+    
     def prepare_payload(self):
-        return {
-            "mode": "instruct",
-            "stream": True,
-            "max_tokens": 200,
-            "skip_special_tokens": False,  # Necessary for Llama 3
-            "custom_token_bans": BANNED_TOKENS,
-            "stop": STOP_STRINGS,
-            "messages": [{
-                "role": "user",
-                "content": self.generate_prompt()
-            }]
-        }
-    '''
-    async def prompt(self):
-        message = await self.signals.message_queue_in.get()
+        return [{
+            "role": "user",
+            "parts": [{"text": self.generate_prompt()}] 
+        }]
+    
+    def prompt(self):
+        data = self.prepare_payload()
+
+        response = self.client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=data, 
+            config={
+                "system_instruction": SYSTEM_PROMPT
+            }
+        )
+
+        AI_message = response.text
+        self.signals.history.append({"role": "assistant", "content": AI_message})
+        
+        print("history:")
+        print(self.signals.history)
+        print("AI_message:")
+        print(AI_message)
+        
+        '''message = await self.signals.message_queue_in.get()
 
         if message is None:
             return
-        
-        if message.content:
 
-            self.signals.is_processing = True 
-            channel_id = message.channel.id
+        # make answer
+        self.signals.is_processing = True 
+        channel_id = message.channel.id
 
-            try:
-                if channel_id not in self.signals.chat_sessions:
-                    print(f"[DEBUG] 세션 없음 → 생성 시도 중 (채널 {channel_id})")
-                    self.signals.chat_sessions[channel_id] = self.global_model.start_chat(history=[])
-                    print(f"🆕 새로운 채팅 세션 생성: {channel_id}")
+        try:
+            if channel_id not in self.signals.chat_sessions:
+                print(f"[DEBUG] 세션 없음 → 생성 시도 중 (채널 {channel_id})")
+                self.signals.chat_sessions[channel_id] = self.global_model.start_chat(history=[])
+                print(f"🆕 새로운 채팅 세션 생성: {channel_id}")
 
-                chat = self.signals.chat_sessions[channel_id]
+            chat = self.signals.chat_sessions[channel_id]
 
-                formatted_message = f"{message.author.display_name}: {message.content}"
+            formatted_message = f"{message.author.display_name}: {message.content}"
 
-                # Gemini에 메시지 전송
-                response = chat.send_message(formatted_message)
-                print(f"> 보낼 메시지: {response.text}")
+            # Gemini에 메시지 전송
+            response = chat.send_message(formatted_message)
+            AI_message = response.text
 
-                if response.text:
-                    self.signals.message_queue_out.put_nowait((channel_id, response.text))
+            if AI_message:
+                print("AI OUTPUT: " + AI_message)
 
-            except Exception as e:
-                print(f"Gemini 응답 오류: {e}")
-                
-            finally:
-                # 응답 완료 후 '생각 중' 상태 해제
-                self.signals.is_processing = False
-                self.signals.message_queue_in.task_done()
+                self.signals.history.append({"role": "assistant", "content": AI_message})
+                self.signals.message_queue_out.put_nowait((channel_id, AI_message))
+
+        except Exception as e:
+            print(f"Gemini 응답 오류: {e}")
+
+        finally:
+            # 응답 완료 후 '생각 중' 상태 해제
+            self.signals.is_processing = False
+            self.signals.message_queue_in.task_done()'''

@@ -80,9 +80,9 @@ class DiscordClient(Module):
                 return
 
             print(f'in #{message.channel.name} | {message.channel.guild.name}, {message.author.display_name} said: {message.content}')
-            # Store the 10 most recent chat messages
-            '''if len(self.signals.recentDiscordMessages) > 10:
-                self.signals.recentDiscordMessages.pop(0)'''
+            # Store the 100 most recent chat messages
+            if len(self.signals.recentDiscordMessages) > 100:
+                self.signals.recentDiscordMessages.pop(0)
             self.signals.recentDiscordMessages.append(f"[{message.author.display_name} : {message.content}]")
 
             # Set recentDiscordMessages to itself to trigger the setter (updates frontend)

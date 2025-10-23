@@ -16,7 +16,7 @@ CONTEXT_SIZE = 8192
 HOST_NAME = "단아히"
 
 # This is the AI's name
-AI_NAME = "Neurorong"
+AI_NAME = "뉴로롱"
 
 # The system prompt. Any character text needs to be here.
 # You MUST ensure it is less than CONTEXT_SIZE tokens
@@ -41,6 +41,20 @@ SYSTEM_PROMPT = '''뉴로롱은 장난기 넘치는, 재치있는, 호기심 많
     이런 자신을 좋아해주는 사람들이 많아지기를.
     또 자신도 다른 사람들에게 즐거움을 줄 수 있기를..'''
 
+PROMPTER_PROMPT = '''
+
+뉴로롱이 갑자기 위 답변을 보내고 싶지 않을 자연스러운 이유가 있으면, 설명 없이 오직 다음과 같은 양식만으로 출력:
+    x[여기에 이유를 입력]
+그렇지 않고 그대로 답변을 보낼 거라고 예상되면, 설명 없이 오직 다음과 같은 양식만으로 출력:
+    o[여기에 답변을 입력]
+'''
+
+MIDDLE_PROMPT = '''
+
+위 대화를 통해 뉴로롱이 앞으로 뭘 하고 싶을지,
+또 뉴로롱이 그 목표를 이루기 위해 위 대화에 이어서 어떤 답변을 할지, 설명 없이 오직 다음과 같은 양식만으로 출력:
+    뉴로롱은 ...하고 싶어한다. 따라서 다음과 같은 답변을 보내려 한다: "여기에 답변을 입력"
+'''
 
 # List of banned tokens to be passed to the textgen web ui api
 # For Mistral 7B v0.2, token 422 is the "#" token. The LLM was spamming #life #vtuber #funfact etc.

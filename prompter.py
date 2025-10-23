@@ -13,11 +13,19 @@ class Prompter:
         self.system_ready = False
         self.timeSinceLastMessage = 0.0
     
+    def prompt_now(self):
+        # Don't prompt AI if ai is thinking
+        if self.signals.AI_thinking:
+            return False
+        
+        if self.signals.on_message:
+            return True
+
     def prompt_loop(self):
         print("Prompter started")
 
         while not self.signals.terminate:
-            if self.signals.on_message:
+            if self.prompt_now():
                 self.llm.prompt()
                 self.signals.on_message = False
 

@@ -32,8 +32,8 @@ class TextLLMWrapper:
             injections.append(module.get_prompt_injection())
 
         # Let all modules clean up once the prompt injection has been fetched from all modules
-        # for module in self.modules.values():
-        #    module.cleanup()
+        for module in self.modules.values():
+            module.cleanup()
 
         # Sort injections by priority
         injections = sorted(injections, key=lambda x: x.priority)
@@ -56,13 +56,21 @@ class TextLLMWrapper:
 
         while True:
             chat_section = ""
-            '''for message in messages:
-                chat_section += message["content"]'''
+            for message in self.signals.recentDiscordMessages:
+                chat_section += message
+            chat_section += "\n\n"
 
-            generation_prompt = AI_NAME + ": "
+            generation_prompt = ""
 
             base_injections = [Injection(chat_section, 100)]
-            full_prompt = self.assemble_injections(base_injections) + generation_prompt
+            middle_prompt = chat_section + MIDDLE_PROMPT
+
+            middle_response = self.client.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=middle_prompt, 
+            )
+
+            full_prompt = chat_section + middle_response.text + PROMPTER_PROMPT
             print("full_prompt:")
             print(full_prompt)
             print("======================")
@@ -96,23 +104,24 @@ class TextLLMWrapper:
         }]
     
     def prompt(self):
+        self.signals.AI_thinking = True
+
         data = self.prepare_payload()
 
         response = self.client.models.generate_content(
             model='gemini-2.0-flash',
             contents=data, 
-            config={
-                "system_instruction": SYSTEM_PROMPT
-            }
         )
 
-        AI_message = response.text
-        self.signals.history.append({"role": "assistant", "content": AI_message})
+        if response.text[0] == 'o':
+            AI_message = response.text[2:-2]
+            self.signals.AI_message = AI_message
+            self.signals.send_now = True
         
-        print("history:")
-        print(self.signals.history)
-        print("AI_message:")
-        print(AI_message)
+        print("response:")
+        print(response.text)
+
+        self.signals.AI_thinking = False
         
         '''message = await self.signals.message_queue_in.get()
 

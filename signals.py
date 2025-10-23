@@ -12,6 +12,10 @@ class Signals:
 
         # This flag indicates to discord bot that it received message, exectuting prompt
         self.on_message = False
+        self.AI_thinking = False
+        self.send_now = False
+
+        self.AI_message = ""
 
         self.recentChannel = None
 

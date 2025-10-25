@@ -31,3 +31,5 @@ class Prompter:
             if self.prompt_now():
                 self.llm.prompt()
                 self.signals.on_message = False
+
+                time.sleep(2)

@@ -37,8 +37,7 @@ class DiscordClient(Module):
 
 
     async def run(self):
-        print("Discord bot started")
-        # handler = logging.FileHandler(filename="discord.log", encoding="utf-8", mode="w")
+        self.signals.logger.info("Discord bot started")
 
         load_dotenv()
         TOKEN = os.getenv('DISCORD_TOKEN')
@@ -66,7 +65,7 @@ class DiscordClient(Module):
         # this will be called when the event READY is triggered, which will be on bot start
         @bot.event
         async def on_ready():
-            print(f"DISCORD: Bot is ready for work")
+            self.signals.logger.info(f"DISCORD: Bot is ready for work")
 
             await self.bot.change_presence(status=discord.Status.online, activity=discord.Game("수다 떨기"))
         
@@ -79,7 +78,7 @@ class DiscordClient(Module):
             if len(message.content) > DISCORD_MAX_MESSAGE_LENGTH:
                 return
 
-            print(f'in #{message.channel.name} | {message.channel.guild.name}, {message.author.display_name} said: {message.content}')
+            self.signals.logger.debug(f'in #{message.channel.name} | {message.channel.guild.name}, {message.author.display_name} said: {message.content}')
             # Store the 100 most recent chat messages
             if len(self.signals.recentDiscordMessages) > 100:
                 self.signals.recentDiscordMessages.pop(0)
@@ -91,35 +90,53 @@ class DiscordClient(Module):
             # save recent channel
             self.signals.recentChannel = message.channel
 
+            if message.content.startswith('!'):
+                await bot.process_commands(message) 
+                return
+
             # save host's message
             # if message.author.display_name == HOST_NAME:
             #     self.signals.history.append({"role": "user", "content": message.content})
             
             # prompt when user sends discord message
-            if not message.author.bot:
+            if not message.author.bot and self.signals.online:
                 self.signals.on_message = True
+
+        @bot.command(aliases=['전원'])
+        async def power(ctx, status: str):
+            self.signals.logger.debug("command on")
+            if status == "on":
+                if not self.signals.online:
+                    await ctx.send("안녕! 나 불렀어?")
+                    self.signals.online = True   
+
+            elif status == "off":
+                if self.signals.online:
+                    await ctx.send("뉴로롱은 더 이상 얘기하지 않아요, 안녕!")
+                    self.signals.online = False
+
+            else:
+                await ctx.send("[system] 잘못된 옵션: 'on' 또는 'off'만 입력하세요")
             
         async def send_message():
-            # 봇이 완전히 준비될 때까지 기다립니다.
             await self.bot.wait_until_ready()
 
             try:
                 while not self.bot.is_closed():
                     if self.signals.send_now: 
-                        # 🚨 채널이 설정되었는지도 확인하는 것이 안전합니다.
                         if self.signals.recentChannel:
+                            await asyncio.sleep(3)
                             try:
                                 await self.signals.recentChannel.send(self.signals.AI_message)
                                     
                                 self.signals.send_now = False
                                     
                             except Exception as e:
-                                print(f"Error sending Discord message: {e}")
+                                self.signals.logger.info(f"Error sending Discord message: {e}")
                     
-                    # 리스트가 비어있거나 조건이 만족하지 않으면 0.5초 대기
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.1)
             except CancelledError:
-                print("DISCORD: Background sender loop successfully terminated by external signal.")
+                self.signals.logger.info("DISCORD: Background sender loop successfully terminated by external signal.")
                 pass
 
         # Checkpoint to see if the bot is enabled
@@ -141,7 +158,7 @@ class DiscordClient(Module):
                 return
             
             if self.bot.is_closed():
-                print("DISCORD: Bot connection closed unexpectedly.")
+                self.signals.logger.info("DISCORD: Bot connection closed unexpectedly.")
                 return
 
             await asyncio.sleep(0.1)

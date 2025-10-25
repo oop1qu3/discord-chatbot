@@ -14,13 +14,11 @@ class Signals:
         self.on_message = False
         self.AI_thinking = False
         self.send_now = False
+        self.online = False
 
         self.AI_message = ""
-
         self.recentChannel = None
-
-        self.chat_sessions = {}
-        self.is_processing = False
+        self.logger = None
 
     @property
     def recentDiscordMessages(self):

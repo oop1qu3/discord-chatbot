@@ -1,5 +1,6 @@
 import os
 import copy
+import time
 from dotenv import load_dotenv
 from google.genai import Client
 from modules.injection import Injection
@@ -16,10 +17,10 @@ class TextLLMWrapper:
         try:
             load_dotenv()
             client = Client(api_key=os.getenv("GEMINI_API_KEY"))
-            print("Gemini Client 초기화 성공.")
+            self.signals.logger.info("Gemini Client 초기화 성공.")
             return client
         except Exception as e:
-            print(f"Gemini Client 초기화 오류: {e}")
+            self.signals.logger.info(f"Gemini Client 초기화 오류: {e}")
             return None
     
     # Assembles all the injections from all modules into a single prompt by increasing priority
@@ -57,23 +58,19 @@ class TextLLMWrapper:
         while True:
             chat_section = ""
             for message in self.signals.recentDiscordMessages:
-                chat_section += message
-            chat_section += "\n\n"
-
+                chat_section += (message + "\n")
             generation_prompt = ""
 
             base_injections = [Injection(chat_section, 100)]
-            middle_prompt = chat_section + MIDDLE_PROMPT
+            middle_prompt = chat_section + "\n" + MIDDLE_PROMPT
 
             middle_response = self.client.models.generate_content(
                 model='gemini-2.0-flash',
                 contents=middle_prompt, 
             )
 
-            full_prompt = chat_section + middle_response.text + PROMPTER_PROMPT
-            print("full_prompt:")
-            print(full_prompt)
-            print("======================")
+            full_prompt = chat_section + "\n" + middle_response.text + "\n" + PROMPTER_PROMPT
+            self.signals.logger.debug("full_prompt:" + "\n" + full_prompt) 
 
             return full_prompt  # FIXME
             '''wrapper = [{"role": "user", "content": full_prompt}]
@@ -106,6 +103,7 @@ class TextLLMWrapper:
     def prompt(self):
         self.signals.AI_thinking = True
 
+        time.sleep(1)
         data = self.prepare_payload()
 
         response = self.client.models.generate_content(
@@ -118,44 +116,6 @@ class TextLLMWrapper:
             self.signals.AI_message = AI_message
             self.signals.send_now = True
         
-        print("response:")
-        print(response.text)
+        self.signals.logger.debug("response:" + "\n" + response.text)
 
         self.signals.AI_thinking = False
-        
-        '''message = await self.signals.message_queue_in.get()
-
-        if message is None:
-            return
-
-        # make answer
-        self.signals.is_processing = True 
-        channel_id = message.channel.id
-
-        try:
-            if channel_id not in self.signals.chat_sessions:
-                print(f"[DEBUG] 세션 없음 → 생성 시도 중 (채널 {channel_id})")
-                self.signals.chat_sessions[channel_id] = self.global_model.start_chat(history=[])
-                print(f"🆕 새로운 채팅 세션 생성: {channel_id}")
-
-            chat = self.signals.chat_sessions[channel_id]
-
-            formatted_message = f"{message.author.display_name}: {message.content}"
-
-            # Gemini에 메시지 전송
-            response = chat.send_message(formatted_message)
-            AI_message = response.text
-
-            if AI_message:
-                print("AI OUTPUT: " + AI_message)
-
-                self.signals.history.append({"role": "assistant", "content": AI_message})
-                self.signals.message_queue_out.put_nowait((channel_id, AI_message))
-
-        except Exception as e:
-            print(f"Gemini 응답 오류: {e}")
-
-        finally:
-            # 응답 완료 후 '생각 중' 상태 해제
-            self.signals.is_processing = False
-            self.signals.message_queue_in.task_done()'''

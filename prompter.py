@@ -18,80 +18,16 @@ class Prompter:
         if self.signals.AI_thinking:
             return False
         
+        if not self.signals.online:
+            return False
+        
         if self.signals.on_message:
             return True
 
     def prompt_loop(self):
-        print("Prompter started")
+        self.signals.logger.info("Prompter started")
 
         while not self.signals.terminate:
             if self.prompt_now():
                 self.llm.prompt()
                 self.signals.on_message = False
-
-'''
-import discord
-import random
-import asyncio
-
-class Prompter:
-    def __init__(self, signals):
-        self.signals = signals
-    
-    async def on_message(self, message: discord.Message):
-        # test
-        print(f"> 받은 메시지: {message.content}")
-        
-        # 자기 자신 무시
-        if message.author.bot:
-            return
-        
-        # 1) 명령어 처리 (가장 먼저 실행)
-        if message.content.startswith("!"):
-            return
-
-        # 2) 봇이 이미 응답 중일 때 차단
-        if self.signals.is_processing:
-            return
-        
-        # 3) 필터링: 메시지 길이 짧으면 무시
-        if len(message.content) < 5:
-            if random.random() < 0.75: 
-                return
-
-        # 4) 필터링: 응답 확률 (60% 확률로 응답)
-        if random.random() < 0.50:
-            return
-
-        # --- 필터 통과: 응답 준비 시작 ---
-        print("필터 통과")
-        self.signals.is_processing = True 
-        
-        channel_id = message.channel.id
-
-        try:
-            if channel_id not in self.signals.chat_sessions:
-                print(f"[DEBUG] 세션 없음 → 생성 시도 중 (채널 {channel_id})")
-                self.signals.chat_sessions[channel_id] = self.signals.global_model.start_chat(history=[])
-                print(f"🆕 새로운 채팅 세션 생성: {channel_id}")
-
-            chat = self.signals.chat_sessions[channel_id]
-
-            await asyncio.sleep(random.uniform(2, 5))
-
-            formatted_message = f"{message.author.display_name}: {message.content}"
-
-            # Gemini에 메시지 전송
-            response = chat.send_message(formatted_message)
-
-            # Gemini 응답 전송
-            await message.channel.send(response.text)
-
-        except Exception as e:
-            print(f"Gemini 응답 오류: {e}")
-            await message.channel.send("앗, 잠시 생각 중이에요... 🤔")
-
-        finally:
-            # 7) 응답 완료 후 '생각 중' 상태 해제
-            self.signals.is_processing = False
-'''

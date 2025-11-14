@@ -40,7 +40,8 @@ class DiscordClient(Module):
         self.signals.logger.info("Discord bot started")
 
         load_dotenv()
-        TOKEN = os.getenv('DISCORD_TOKEN')
+        # TOKEN = os.getenv('DISCORD_TOKEN')
+        TOKEN = os.getenv('TEST_DISCORD_TOKEN')
         
         intents = discord.Intents(
             message_content=True, 
@@ -67,7 +68,7 @@ class DiscordClient(Module):
         async def on_ready():
             self.signals.logger.info(f"DISCORD: Bot is ready for work")
 
-            await self.bot.change_presence(status=discord.Status.online, activity=discord.Game("수다 떨기"))
+            await self.bot.change_presence(status=discord.Status.online, activity=discord.Game("!전원 on/off | 수다 떨기"))
         
         # this will be called whenever a message in a channel was send by either the bot OR another user
         @bot.event
@@ -105,12 +106,12 @@ class DiscordClient(Module):
         @bot.command(aliases=['전원'])
         async def power(ctx, status: str):
             self.signals.logger.debug("command on")
-            if status == "on":
+            if status.lower() == "on":
                 if not self.signals.online:
                     await ctx.send("안녕! 나 불렀어?")
                     self.signals.online = True   
 
-            elif status == "off":
+            elif status.lower() == "off":
                 if self.signals.online:
                     await ctx.send("뉴로롱은 더 이상 얘기하지 않아요, 안녕!")
                     self.signals.online = False
@@ -118,6 +119,20 @@ class DiscordClient(Module):
             else:
                 await ctx.send("[system] 잘못된 옵션: 'on' 또는 'off'만 입력하세요")
             
+        @bot.command(aliases=['기억출력'])
+        async def print_memory(ctx):
+            all_memories = self.signals.API.get_memories()
+            self.signals.logger.debug("--- 모든 저장된 메모리 목록 ---")
+            for memory in all_memories:
+                self.signals.logger.debug(f"ID: {memory['id']}")
+                self.signals.logger.debug(f"Document: {memory['document'][:80]}...") # 내용이 길면 일부만 출력
+                self.signals.logger.debug(f"Metadata: {memory['metadata']}")
+                self.signals.logger.debug("-" * 20)
+
+        @bot.command(aliases=['기억삭제'])
+        async def delete_memory(ctx, id: str):
+            self.signals.API.delete_memory(id)
+
         async def send_message():
             await self.bot.wait_until_ready()
 
@@ -128,7 +143,8 @@ class DiscordClient(Module):
                             await asyncio.sleep(3)
                             try:
                                 await self.signals.recentChannel.send(self.signals.AI_message)
-                                    
+                                
+                                await asyncio.sleep(2)
                                 self.signals.send_now = False
                                     
                             except Exception as e:

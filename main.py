@@ -32,6 +32,13 @@ async def main():
     logger.addHandler(stream_handler)
     logger.addHandler(file_handler)
 
+    try:
+        load_dotenv()
+        client = Client(api_key=os.getenv("GEMINI_API_KEY"))
+        logger.info("Gemini Client 초기화 성공.")
+    except Exception as e:
+        logger.info(f"Gemini Client 초기화 오류: {e}")
+
     logger.info("고성능 최신 챗봇, 뉴로롱 로딩 증..")
 
     # Register signal handler so that all threads can be exited.
@@ -45,6 +52,7 @@ async def main():
     # Singleton object that every module will be able to read/write to
     signals = Signals()
     signals.logger = logger
+    signals.client = client
 
     # MODULES
     # Modules that start disabled CANNOT be enabled while the program is running.
@@ -60,7 +68,7 @@ async def main():
     # Create Discord bot
     modules['discord'] = DiscordClient(signals, enabled=True)
     # Create Memory module
-    # modules['memory'] = Memory(signals, enabled=True)
+    modules['memory'] = Memory(signals, enabled=True)
 
     # Create threads (As daemons, so they exit when the main thread exits)
     prompter_thread = threading.Thread(target=prompter.prompt_loop, daemon=True)

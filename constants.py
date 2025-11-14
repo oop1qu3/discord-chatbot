@@ -16,7 +16,7 @@ CONTEXT_SIZE = 8192
 HOST_NAME = "단아히"
 
 # This is the AI's name
-AI_NAME = "뉴로롱"
+AI_NAME = "_뉴로롱"
 
 # The system prompt. Any character text needs to be here.
 # You MUST ensure it is less than CONTEXT_SIZE tokens
@@ -41,9 +41,8 @@ STOP_STRINGS = ["\n", "<|eot_id|>"]
 
 # MEMORY SECTION: Constants relevant to forming new memories
 
-MEMORY_PROMPT = "\nGiven only the information above, " \
-    "what are 3 most salient high level questions we can answer about the subjects in the conversation? " \
-    "Separate each question and answer pair with \"{qa}\", and only output the question and answer, no explanations."
+MEMORY_PROMPT = '''위 정보가 주어졌을 때, 대화 속 주제에 대하여 우리가 대답할 수 있는 가장 질 좋은 질문 3가지는 무엇인가?
+각각의 질문-답 쌍을 \"{qa}\"로 나눠, 설명 없이 오직 질문-답을 출력하라'''
 
 # How many messages in the history to include for querying the database.
 MEMORY_QUERY_MESSAGE_COUNT = 5

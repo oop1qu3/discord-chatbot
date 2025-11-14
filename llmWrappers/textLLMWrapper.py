@@ -10,18 +10,6 @@ class TextLLMWrapper:
     def __init__(self, signals, modules=None) -> None:
         self.signals = signals
         self.modules = modules
-
-        self.client = self._initialize_gemini_client()
-    
-    def _initialize_gemini_client(self):
-        try:
-            load_dotenv()
-            client = Client(api_key=os.getenv("GEMINI_API_KEY"))
-            self.signals.logger.info("Gemini Client 초기화 성공.")
-            return client
-        except Exception as e:
-            self.signals.logger.info(f"Gemini Client 초기화 오류: {e}")
-            return None
     
     # Assembles all the injections from all modules into a single prompt by increasing priority
     def assemble_injections(self, injections=None):
@@ -49,12 +37,11 @@ class TextLLMWrapper:
         messages = copy.deepcopy(self.signals.history)
 
         # For every message prefix with speaker name unless it is blank
-        for message in messages:
+        '''for message in messages:
             if message["role"] == "user" and message["content"] != "":
                 message["content"] = HOST_NAME + ": " + message["content"] + "\n"
             elif message["role"] == "assistant" and message["content"] != "":
-                message["content"] = AI_NAME + ": " + message["content"] + "\n"
-
+                message["content"] = AI_NAME + ": " + message["content"] + "\n"'''
         while True:
             chat_section = ""
             for message in self.signals.recentDiscordMessages:
@@ -64,7 +51,7 @@ class TextLLMWrapper:
             base_injections = [Injection(chat_section, 100)]
             middle_prompt = chat_section + "\n" + MIDDLE_PROMPT
 
-            middle_response = self.client.models.generate_content(
+            middle_response = self.signals.client.models.generate_content(
                 model='gemini-2.0-flash',
                 contents=middle_prompt, 
             )
@@ -103,12 +90,12 @@ class TextLLMWrapper:
     def prompt(self):
         self.signals.AI_thinking = True
 
-        time.sleep(1)
         data = self.prepare_payload()
+        time.sleep(1)
 
-        response = self.client.models.generate_content(
+        response = self.signals.client.models.generate_content(
             model='gemini-2.0-flash',
-            contents=data, 
+            contents=data,
         )
 
         if response.text[0] == 'o':
@@ -119,3 +106,4 @@ class TextLLMWrapper:
         self.signals.logger.debug("response:" + "\n" + response.text)
 
         self.signals.AI_thinking = False
+        self.signals.on_message = False

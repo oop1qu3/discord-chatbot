@@ -8,6 +8,7 @@ import json
 import uuid
 import asyncio
 import copy
+import datetime
 
 
 class Memory(Module):
@@ -16,6 +17,7 @@ class Memory(Module):
         super().__init__(signals, enabled)
 
         self.API = self.API(self)
+        self.signals.API = self.API
         self.prompt_injection.text = ""
         self.prompt_injection.priority = 60
 
@@ -23,28 +25,28 @@ class Memory(Module):
 
         self.chroma_client = chromadb.PersistentClient(path="./memories/chroma.db", settings=Settings(anonymized_telemetry=False))
         self.collection = self.chroma_client.get_or_create_collection(name="neurorong_collection")
-        print(f"MEMORY: Loaded {self.collection.count()} memories from database.")
+        self.signals.logger.info(f"MEMORY: Loaded {self.collection.count()} memories from database.")
         if self.collection.count() == 0:
-            print("MEMORY: No memories found in database. Importing from memoryinit.json")
+            self.signals.logger.info("MEMORY: No memories found in database. Importing from memoryinit.json")
             self.API.import_json(path="./memories/memoryinit.json")
 
     def get_prompt_injection(self):
         # Use recent messages and twitch messages to query the database for related memories
         query = ""
 
-        for message in self.signals.recentDiscordMessages:
+        for message in self.signals.recentDiscordMessages[-20:]:
             query += message + "\n"
 
-        for message in self.signals.history[-MEMORY_QUERY_MESSAGE_COUNT:]:
+        '''for message in self.signals.history[-MEMORY_QUERY_MESSAGE_COUNT:]:
             if message["role"] == "user" and message["content"] != "":
                 query += HOST_NAME + ": " + message["content"] + "\n"
             elif message["role"] == "assistant" and message["content"] != "":
-                query += AI_NAME + ": " + message["content"] + "\n"
+                query += AI_NAME + ": " + message["content"] + "\n"'''
 
         memories = self.collection.query(query_texts=query, n_results=MEMORY_RECALL_COUNT)
 
         # Generate injection for LLM prompt
-        self.prompt_injection.text = f"{AI_NAME} knows these things:\n"
+        self.prompt_injection.text = f"{AI_NAME}은 다음과 같은 사실을 기억해냈다:\n"
         for i in range(len(memories["ids"][0])):
             self.prompt_injection.text += memories['documents'][0][i] + "\n"
         self.prompt_injection.text += "End of knowledge section\n"
@@ -57,24 +59,30 @@ class Memory(Module):
         # This is a technique called reflection. You essentially ask the AI what information is important in the recent
         # conversation, and it is converted into a memory so that it can be recalled later.
         while not self.signals.terminate:
+            self.signals.history = self.signals.recentDiscordMessages
+
             if self.processed_count > len(self.signals.history):
                 self.processed_count = 0
 
             if len(self.signals.history) - self.processed_count >= 20:
-                print("MEMORY: Generating new memories")
+                self.signals.logger.info("MEMORY: Generating new memories")
 
                 # Copy the latest unprocessed messages
                 messages = copy.deepcopy(self.signals.history[-(len(self.signals.history) - self.processed_count):])
 
-                for message in messages:
+                '''for message in messages:
                     if message["role"] == "user" and message["content"] != "":
                         message["content"] = HOST_NAME + ": " + message["content"] + "\n"
                     elif message["role"] == "assistant" and message["content"] != "":
-                        message["content"] = AI_NAME + ": " + message["content"] + "\n"
+                        message["content"] = AI_NAME + ": " + message["content"] + "\n"'''
 
-                chat_section = ""
+                '''chat_section = ""
                 for message in messages:
-                    chat_section += message["content"]
+                    chat_section += message["content"]'''
+                
+                chat_section = ""
+                for message in self.signals.recentDiscordMessages:
+                    chat_section += (message + "\n")
 
                 # 실제 대화 내용을 단일 'user' 메시지로 구성
                 conversation_history = [{
@@ -103,21 +111,19 @@ class Memory(Module):
                 )
 
                 try:
-                    # 2. 비동기 호출: requests.post 대신 AsyncClient 사용
-                    response = await self.global_model.models.generate_content(
-                        model='gemini-2.0-flash',  # 적절한 Gemini 모델 선택
+                    response = self.signals.client.models.generate_content(
+                        model='gemini-2.0-flash',
                         contents=conversation_history,
                         config={
-                            "system_instruction": MEMORY_PROMPT, # MEMORY_PROMPT는 이제 모델 역할 정의에 집중
-                            "max_output_tokens": 500, # JSON 출력에 맞춰 토큰 증가
-                            "response_mime_type": "application/json", # 🚨 JSON 출력 강제
-                            "response_schema": memory_schema        # 🚨 스키마 정의
+                            "system_instruction": MEMORY_PROMPT,
+                            "max_output_tokens": 500, 
+                            "response_mime_type": "application/json", 
+                            "response_schema": memory_schema 
                         }
                     )
                     
                     # 3. 응답에서 내용 추출
                     raw_memories = response.text
-                    print(f"MEMORY: Raw memories generated: {raw_memories[:50]}...")
                     
                     try:
                         # 1. JSON 문자열 파싱
@@ -139,20 +145,19 @@ class Memory(Module):
                             if question and answer:
                                 # 질문과 답변을 명확하게 구분하는 포맷을 사용하여 저장
                                 full_memory = f"Q: {question}\nA: {answer}" 
+                                self.signals.logger.debug(full_memory)
                                 new_memories_to_upsert.append(full_memory)
 
                         # 3. 데이터베이스에 일괄 저장 (Upsert)
                         if new_memories_to_upsert:
                             ids = [str(uuid.uuid4()) for _ in new_memories_to_upsert]
                             
-                            # upsert는 비동기 작업일 수 있으므로 self.collection이 비동기를 지원하는지 확인해야 함
-                            # ChromaDB Python 클라이언트의 upsert는 일반적으로 동기 함수이므로, 그대로 사용.
                             self.collection.upsert(
                                 ids=ids,
                                 documents=new_memories_to_upsert,
-                                metadatas=[{"type": "short-term"}] * len(ids)
+                                metadatas=[{"type": "short-term", "time": datetime.datetime.now().isoformat()}] * len(ids)
                             )
-                            print(f"MEMORY: {len(new_memories_to_upsert)}개의 새로운 메모리가 데이터베이스에 추가되었습니다.")
+                            self.signals.logger.info(f"MEMORY: {len(new_memories_to_upsert)}개의 새로운 메모리가 데이터베이스에 추가되었습니다.")
 
                         # 4. 처리된 메시지 카운트 업데이트
                         self.processed_count = len(self.signals.history) 

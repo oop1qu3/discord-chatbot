@@ -21,6 +21,9 @@ class Prompter:
         if not self.signals.online:
             return False
         
+        if self.signals.send_now:
+            return False
+        
         if self.signals.on_message:
             return True
 
@@ -30,6 +33,3 @@ class Prompter:
         while not self.signals.terminate:
             if self.prompt_now():
                 self.llm.prompt()
-                self.signals.on_message = False
-
-                time.sleep(2)

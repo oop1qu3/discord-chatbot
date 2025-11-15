@@ -16,29 +16,17 @@ from prompter import Prompter
 from modules.memory import Memory
 from constants import *
 
-async def main():
-    # Create logger 
-    logger = logging.getLogger('my_discord_bot')
-    logger.setLevel(logging.DEBUG)
-
-    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
-
-    stream_handler = logging.StreamHandler()
-    stream_handler.setLevel(logging.INFO) 
-    file_handler = logging.FileHandler(filename="Neurorong.log", encoding="utf-8", mode="w")
-    file_handler.setLevel(logging.DEBUG) 
-    file_handler.setFormatter(formatter)
-
-    logger.addHandler(stream_handler)
-    logger.addHandler(file_handler)
-
-    try:
-        load_dotenv()
-        client = Client(api_key=os.getenv("GEMINI_API_KEY"))
-        logger.info("Gemini Client 초기화 성공.")
-    except Exception as e:
-        logger.info(f"Gemini Client 초기화 오류: {e}")
-
+async def main(): 
+    load_dotenv()
+    
+    # configure root logger
+    logging.basicConfig(
+        level=logging.DEBUG, 
+        format='%(asctime)s [%(levelname)s] %(name)s - %(message)s', 
+        #filename="Neurorong.log",
+        #filemode="w"
+    )
+    logger = logging.getLogger('main')
     logger.info("고성능 최신 챗봇, 뉴로롱 로딩 증..")
 
     # Register signal handler so that all threads can be exited.
@@ -51,8 +39,6 @@ async def main():
 
     # Singleton object that every module will be able to read/write to
     signals = Signals()
-    signals.logger = logger
-    signals.client = client
 
     # MODULES
     # Modules that start disabled CANNOT be enabled while the program is running.
@@ -63,12 +49,17 @@ async def main():
     llm = TextLLMWrapper(signals, modules)
 
     # Create Prompter
-    prompter = Prompter(signals, llm, modules)
+    prompter = Prompter(llm, signals, modules)
 
     # Create Discord bot
     modules['discord'] = DiscordClient(signals, enabled=True)
     # Create Memory module
     modules['memory'] = Memory(signals, enabled=True)
+
+    # Set discord message history
+    llm.setMessageHistory(modules['discord'].message_history)
+    prompter.setMessageHistory(modules['discord'].message_history)
+    modules['memory'].setMessageHistory(modules['discord'].message_history)
 
     # Create threads (As daemons, so they exit when the main thread exits)
     prompter_thread = threading.Thread(target=prompter.prompt_loop, daemon=True)
@@ -86,14 +77,13 @@ async def main():
     logger.info("TERMINATING ======================")
 
     # Wait for child threads to exit before exiting main thread
+    prompter_thread.join()
+    logger.info("PROMPTER EXITED ======================")
 
     # Wait for all modules to finish
     for module_thread in module_threads.values():
         module_thread.join()
     logger.info("MODULES EXITED ======================")
-
-    prompter_thread.join()
-    logger.info("PROMPTER EXITED ======================")
 
     logger.info("All threads exited, shutdown complete")
     sys.exit(0)

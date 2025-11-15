@@ -49,3 +49,10 @@ MEMORY_QUERY_MESSAGE_COUNT = 5
 
 # How many memories to recall and insert into context
 MEMORY_RECALL_COUNT = 5
+
+# How many messages in the history to include for executing the decider.
+DECIDER_INPUT_MESSAGE_COUNT = 20
+
+MIN_SLEEP_TIME = 0.5  # 최소 0.5초 대기
+CHAR_DELAY_FACTOR = 0.3 # 글자당 0.3초 추가
+MAX_SLEEP_TIME = 9.5   # 최대 9.5초 대기

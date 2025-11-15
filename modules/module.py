@@ -1,5 +1,5 @@
 import asyncio
-from modules.injection import Injection
+import logging
 
 '''
 An extendable class that defines a module that interacts with the main program.
@@ -14,15 +14,9 @@ class Module:
         self.signals = signals
         self.enabled = enabled
 
-        self.prompt_injection = Injection("", -1)
-
     def init_event_loop(self):
         asyncio.run(self.run())
 
-    def get_prompt_injection(self):
-        return self.prompt_injection
-
-    # Function that is called after all modules have provided their injections
     def cleanup(self):
         pass
 

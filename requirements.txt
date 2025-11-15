@@ -2,3 +2,5 @@ discord.py
 python-dotenv
 google-genai
 chromadb
+langgraph
+langchain-google-genai

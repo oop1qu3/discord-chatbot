@@ -3,3 +3,4 @@ Neurorong.log
 .venv
 __pycache__
 chroma.db
+.ipynb_checkpoints

@@ -2,13 +2,8 @@ import asyncio
 
 class Signals:
     def __init__(self):
-        self.last_message_time = 0.0
-
         # This flag indicates to all threads that they should immediately terminate
         self._terminate = False
-
-        self._recentDiscordMessages = []
-        self._history = []
 
         # This flag indicates to discord bot that it received message, exectuting prompt
         self.on_message = False
@@ -16,10 +11,7 @@ class Signals:
         self.send_now = False
         self.online = False
 
-        self.AI_message = ""
-        self.recentChannel = None
-        self.logger = None
-        self.client = None
+        self.fragment_responses = []
         self.API = None
 
     @property

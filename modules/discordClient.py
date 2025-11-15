@@ -153,6 +153,7 @@ class DiscordClient(Module):
                             await asyncio.sleep(sleep_duration)
 
                             if self.signals.on_message:
+                                self.signals.on_message = False
                                 break
                         
                         self.signals.send_now = False

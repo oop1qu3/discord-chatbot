@@ -11,24 +11,8 @@ class Signals:
         self.send_now = False
         self.online = False
 
-        self.fragment_responses = []
+        self.fragmented_response = []
         self.API = None
-
-    @property
-    def recentDiscordMessages(self):
-        return self._recentDiscordMessages
-
-    @recentDiscordMessages.setter
-    def recentDiscordMessages(self, value):
-        self._recentDiscordMessages = value
-
-    @property
-    def history(self):
-        return self._history
-
-    @history.setter
-    def history(self, value):
-        self._history = value
 
     @property
     def terminate(self):

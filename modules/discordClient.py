@@ -74,8 +74,8 @@ class DiscordClient(Module):
             #self.logger.debug(f'in #{message.channel.name} | {message.channel.guild.name}, {message.author.display_name}: {message.content}')
             self.message_history.append(f"[{message.author.display_name}: {message.content}]")
             # Store the 100 most recent chat messages
-            if len(self.signals.recentDiscordMessages) > 100:
-                self.signals.recentDiscordMessages.pop(0)
+            if len(self.message_history) > 100:
+                self.message_history.pop(0)
 
             if message.content.startswith('!'):
                 await bot.process_commands(message) 
